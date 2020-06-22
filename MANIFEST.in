@@ -10,11 +10,13 @@ include *.md
 include LICENSE
 
 # Include the data files
-recursive-include data *.jpg *.names *.sh *.txt
-recursive-include assets *.png
+recursive-exclude data *.jpg *.names *.txt
+recursive-include data coco.names *.sh
+recursive-include assets *.jpg
 
 # Include configs
-recursive-include config *.cfg *.data *.sh
+recursive-exclude config *.cfg *.data
+recursive-include config yolo*.cfg coco.data *.sh
 
 # Include scripts
 recursive-include scripts *.py

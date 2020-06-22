@@ -28,7 +28,7 @@ install_reqs = _parse_requirements(path.join(HERE, 'requirements.txt'))
 
 setup(
     name='torch_yolo3',  # Required
-    version='0.1',  # Required
+    version='0.1.0',  # Required
     packages=['torch_yolo3'],  # Required
     description='YOLO v3 in PyTorch',  # Required
     author='Erik Linder-Noren',  # Optional

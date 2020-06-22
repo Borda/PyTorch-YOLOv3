@@ -56,10 +56,10 @@ Uses pretrained weights to make predictions on images. Below table displays the 
 python3 scripts/run_detect.py --image_folder data/samples
 ```
 
-![](assets/giraffe.png)
-![](assets/dog.png)
-![](assets/traffic.png)
-![](assets/messi.png)
+![](assets/giraffe.jpg)
+![](assets/dog.jpg)
+![](assets/traffic.jpg)
+![](assets/messi.jpg)
 
 ## Train
 ```
