@@ -27,6 +27,7 @@ import sys
 import numpy as np
 import tqdm
 import torch
+import torch_optimizer
 from terminaltables import AsciiTable
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
@@ -66,13 +67,13 @@ def main(data_config, model_def, trained_weights, augment, multiscale,
     class_names = load_classes(update_path(data_config["names"]))
 
     # Initiate model
-    assert os.path.isfile(model_def)
+    assert os.path.isfile(model_def), 'missing: %s' % model_def
     model = Darknet(update_path(model_def)).to(DEVICE)
     model.apply(weights_init_normal)
 
     # If specified we start from checkpoint
     if trained_weights:
-        assert os.path.isfile(trained_weights)
+        assert os.path.isfile(trained_weights), 'missing: %s' % trained_weights
         if trained_weights.endswith(".pth"):
             model.load_state_dict(torch.load(trained_weights))
         else:
@@ -81,7 +82,7 @@ def main(data_config, model_def, trained_weights, augment, multiscale,
     augment = dict(zip(augment, [True] * len(augment))) if augment else {}
     augment["scaling"] = multiscale
     # Get dataloader
-    assert os.path.isfile(train_path)
+    assert os.path.isfile(train_path), 'missing: %s' % train_path
     dataset = ListDataset(train_path, augment=augment, img_size=img_size)
     dataloader = DataLoader(
         dataset,
@@ -92,7 +93,13 @@ def main(data_config, model_def, trained_weights, augment, multiscale,
         collate_fn=dataset.collate_fn,
     )
 
-    optimizer = torch.optim.Adam(model.parameters())
+    for param in model.parameters():
+        param.requires_grad = True
+
+    # optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = torch_optimizer.RAdam(model.parameters(), lr=0.0001)
+    # optimizer = torch_optimizer.Yogi(model.parameters(), lr=0.0001)
+    # optimizer = torch_optimizer.AdaBound(model.parameters(), lr=0.0001)
 
     for epoch in tqdm.tqdm(range(epochs), desc='Training epoch'):
         model.train()
@@ -115,7 +122,7 @@ def main(data_config, model_def, trained_weights, augment, multiscale,
                                      for k in train_metrics_all], step=epoch, phase='train')
 
         if epoch % evaluation_interval == 0:
-            assert os.path.isfile(valid_path)
+            assert os.path.isfile(valid_path), 'missing: %s' % valid_path
             evaluate_epoch(model, valid_path, img_size, batch_size, epoch, class_names, logger, nb_cpu)
 
         if epoch % checkpoint_interval == 0:
@@ -177,10 +184,10 @@ def training_batch(dataloader, model, optimizer, epochs, epoch, batch_i, imgs, t
 def _format_metrics(loss, precision, recall, avg_prec, f1):
     return [
         ("loss", loss.mean().item() if loss else 0.),
-        ("precision", precision.mean()),
-        ("recall", recall.mean()),
-        ("mAP", avg_prec.mean()),
-        ("f1", f1.mean()),
+        ("precision", precision.mean() if precision else 0.),
+        ("recall", recall.mean() if recall else 0.),
+        ("mAP", avg_prec.mean() if avg_prec else 0.),
+        ("f1", f1.mean() if f1 else 0.),
     ]
 
 
@@ -234,7 +241,7 @@ def run_cli():
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
     parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
-    parser.add_argument("--grad_accums", type=int, default=8, help="number of gradient accumulations before step")
+    parser.add_argument("--grad_accums", type=int, default=32, help="number of gradient accumulations before step")
     parser.add_argument("--model_def", type=str, default="config/yolov3.cfg", help="path to model definition file")
     parser.add_argument("--path_output", type=str, default="output", help="path to output folder")
     parser.add_argument("--data_config", type=str, default="config/coco.data", help="path_img to data config file")
