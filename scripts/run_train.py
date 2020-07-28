@@ -20,14 +20,17 @@ python run_train.py \
 from __future__ import division
 
 import argparse
+import inspect
 import logging
 import os
+import shutil
 import sys
 
 import numpy as np
 import tqdm
 import torch
 import torch_optimizer
+import yaml
 from terminaltables import AsciiTable
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
@@ -57,6 +60,12 @@ def main(data_config, model_def, trained_weights, augment, multiscale,
          batch_size, epochs, path_output, nb_cpu):
     path_output = update_path(path_output)
     os.makedirs(path_output, exist_ok=True)
+
+    shutil.copy(data_config, os.path.join(path_output, os.path.basename(data_config)))
+    _, _, _, local_vars = inspect.getargvalues(inspect.currentframe())
+    args = {arg: local_vars[arg] for arg in inspect.getfullargspec(main).args}
+    with open(os.path.join(path_output, 'script-config.yaml'), 'w') as fp:
+        yaml.dump(dict(args), fp)
 
     logger = Logger(os.path.join(path_output, "logs"))
 

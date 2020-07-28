@@ -7,4 +7,5 @@ terminaltables
 # pillow  # already installed by torchvision
 tqdm
 pathos
+PyYAML
 torch-optimizer
