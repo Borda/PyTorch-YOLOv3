@@ -32,7 +32,22 @@ def draw_bboxes(fig, detections, img, img_size, colors, classes):
     :param list colors:
     :param list classes:
     :return:
+
+    >>> import torch
+    >>> dets = torch.tensor([[432.3624, 460.2595, 610.8610, 529.4427,   0.9975,   0.9861,   1.0000],
+    ...                      [286.7274, 461.1088, 404.0372, 512.7909,   0.9331,   0.9983,   2.0000],
+    ...                      [ 15.7389, 436.2556, 103.7795, 500.1582,   0.9697,   0.6634,   2.0000]])
+    >>> clrs = [(0.0, 0.0, 0.5, 1.0), (0.0, 0.5, 0.5, 1.0), (0.5, 0.0, 0.5, 1.0)]
+    >>> lbs = ['person', 'bicycle', 'car']
+    >>> img = np.random.random((600, 600, 3))
+    >>> fig, raw = draw_bboxes(plt.figure(), dets, img, 608, clrs, lbs)
+    >>> raw  # doctest: +NORMALIZE_WHITESPACE
+    [[1, 0.85791, 0.8139, 0.29358, 0.11379],
+     [2, 0.56806, 0.8009, 0.19294, 0.085],
+     [2, 0.09829, 0.77008, 0.1448, 0.1051]]
     """
+    if not fig:
+        fig = plt.figure()
     img_height, img_width = img.shape[:2]
     raw_detect = []
     detections = rescale_boxes(detections, img_size, img.shape[:2])
@@ -68,11 +83,16 @@ def export_img_figure(fig, output_folder, name):
     :param str output_folder:
     :param str name:
     :return:
+
+    >>> pf = export_img_figure(plt.figure(), '.', 'test-figure.jpg')
+    >>> os.path.isfile(pf)
+    True
+    >>> os.remove(pf)
     """
     fig.gca().axis('off')
     fig.gca().xaxis.set_major_locator(NullLocator())
     fig.gca().yaxis.set_major_locator(NullLocator())
     path_fig = os.path.join(output_folder, f"{name}.jpg")
-    fig.savefig(path_fig, dpi=300, bbox_inches="tight", pad_inches=0.0)
+    fig.savefig(path_fig, dpi=150, bbox_inches="tight", pad_inches=0.0)
     plt.close(fig)
     return path_fig

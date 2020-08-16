@@ -14,7 +14,6 @@ python run_train.py \
     --multiscale 0.1 \
     --augment hflip
 
-
 """
 
 from __future__ import division
@@ -57,7 +56,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main(data_config, model_def, trained_weights, augment, multiscale,
          img_size, grad_accums, evaluation_interval, checkpoint_interval,
-         batch_size, epochs, path_output, nb_cpu):
+         batch_size, epochs, path_output, nb_cpu, amp):
     path_output = update_path(path_output)
     os.makedirs(path_output, exist_ok=True)
 
@@ -110,6 +109,9 @@ def main(data_config, model_def, trained_weights, augment, multiscale,
     # optimizer = torch_optimizer.Yogi(model.parameters(), lr=0.0001)
     # optimizer = torch_optimizer.AdaBound(model.parameters(), lr=0.0001)
 
+    # Creates once at the beginning of training
+    scaler = torch.cuda.amp.GradScaler() if amp else None
+
     for epoch in tqdm.tqdm(range(epochs), desc='Training epoch'):
         model.train()
         # start_time = time.time()
@@ -117,7 +119,7 @@ def main(data_config, model_def, trained_weights, augment, multiscale,
         train_metrics = []
         for batch_i, (_, imgs, targets) in enumerate(dataloader):
             model, batch_metric = training_batch(dataloader, model, optimizer, epochs,
-                                                 epoch, batch_i, imgs, targets, grad_accums, img_size)
+                                                 epoch, batch_i, imgs, targets, grad_accums, img_size, scaler)
             loss = batch_metric['loss']
             pbar_batch.set_description("training batch loss=%.5f" % loss)
             train_metrics.append(batch_metric)
@@ -139,20 +141,33 @@ def main(data_config, model_def, trained_weights, augment, multiscale,
 
 
 def training_batch(dataloader, model, optimizer, epochs, epoch, batch_i, imgs, targets, grad_accums,
-                   img_size, verbose=0):
+                   img_size, scaler=None, verbose=0):
     batches_done = len(dataloader) * epoch + batch_i
 
     imgs = Variable(imgs.to(DEVICE))
     targets = Variable(targets.to(DEVICE), requires_grad=False)
 
-    loss, outputs = model(imgs, targets)
-    if loss:
-        # avoid 0 loss
-        loss.backward()
+    if scaler:
+        # Casts operations to mixed precision
+        with torch.cuda.amp.autocast():
+            loss, outputs = model(imgs, targets)
+            if loss:  # avoid 0 loss
+                # Scales the loss, and calls backward() to create scaled gradients
+                scaler.scale(loss).backward()
+    else:
+        loss, outputs = model(imgs, targets)
+        if loss:  # avoid 0 loss
+            loss.backward()
 
+    # Accumulates gradient before each step
     if batches_done % grad_accums == 0:
-        # Accumulates gradient before each step
-        optimizer.step()
+        if scaler:
+            # Unscales gradients and calls or skips optimizer.step()
+            scaler.step(optimizer)
+            # Updates the scale for next iteration
+            scaler.update()
+        else:
+            optimizer.step()
         optimizer.zero_grad()
 
     labels = targets[:, 1].tolist()
@@ -264,13 +279,14 @@ def run_cli():
                         choices=['hflip', 'vflip'])
     parser.add_argument("--nb_cpu", type=int, default=NB_CPUS,
                         help="number of cpu threads to use during batch generation")
+    parser.add_argument("--amp", type=bool, default=1, help="use automatic mixed precision")
     opt = parser.parse_args()
     print(opt)
 
     main(data_config=opt.data_config, model_def=opt.model_def, trained_weights=opt.trained_weights,
          augment=opt.augment, multiscale=opt.multiscale, img_size=opt.img_size, grad_accums=opt.grad_accums,
          evaluation_interval=opt.evaluation_interval, checkpoint_interval=opt.checkpoint_interval,
-         batch_size=opt.batch_size, epochs=opt.epochs, path_output=opt.path_output, nb_cpu=opt.nb_cpu)
+         batch_size=opt.batch_size, epochs=opt.epochs, path_output=opt.path_output, nb_cpu=opt.nb_cpu, amp=opt.amp)
     print("Done :]")
 
 

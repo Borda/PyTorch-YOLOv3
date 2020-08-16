@@ -32,7 +32,7 @@ script:
   #- pip install "pillow<7.0.0"  # this is temporal fix for some prd-party package issues
   #- pip install -r requirements.txt
   - pip install -e .
-  # execution
+  # execution, not needed, as it is part of scripts/test_scripts.py
   #- python scripts/run_detect.py --image_folder ./data/samples --model_def ./config/yolov3-tiny.cfg --weights_path ./weights/yolov3-tiny.weights --class_path ./data/coco.names --output_folder ./outputs
   #- python scripts/run_train.py --epochs 2 --batch_size 1 --model_def ./config/yolov3-tiny.cfg --path_output ./outputs --data_config ./config/custom.data --img_size 416
 

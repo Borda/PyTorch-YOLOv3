@@ -21,6 +21,7 @@ def test_train(tmpdir):
         "--data_config", os.path.join(PATH_CONFIGS, "custom.data"),
         "--img_size", "416",
         "--augment", "hflip",
+        "--grad_accums", "1",
     ]):
         run_cli()
 

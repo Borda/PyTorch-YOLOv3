@@ -102,7 +102,8 @@ class YOLOLayer(nn.Module):
         self.num_classes = num_classes
         self.ignore_thres = 0.5
         self.mse_loss = nn.MSELoss()
-        self.bce_loss = nn.BCELoss()
+        # needed for safe autocast
+        self.bce_loss = nn.BCEWithLogitsLoss()
         self.obj_scale = 1
         self.noobj_scale = 100
         self.metrics = {}
@@ -143,8 +144,9 @@ class YOLOLayer(nn.Module):
         y = torch.sigmoid(prediction[..., 1])  # Center y
         w = prediction[..., 2]  # Width
         h = prediction[..., 3]  # Height
-        pred_conf = torch.sigmoid(prediction[..., 4])  # Conf
-        pred_cls = torch.sigmoid(prediction[..., 5:])  # Cls pred.
+        # no sigmoid because of using BCEWithLogitsLoss
+        pred_conf = prediction[..., 4]  # Conf
+        pred_cls = prediction[..., 5:]  # Cls pred.
 
         # If grid size does not match current we compute new offsets
         if grid_size != self.grid_size:
