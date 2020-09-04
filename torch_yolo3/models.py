@@ -1,5 +1,7 @@
 from __future__ import division
 
+from typing import Tuple, Optional
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -82,13 +84,13 @@ def create_modules(module_defs):
 class Upsample(nn.Module):
     """ nn.Upsample is deprecated """
 
-    def __init__(self, scale_factor, mode="nearest"):
+    def __init__(self, scale_factor: float, mode: str = "nearest"):
         super(Upsample, self).__init__()
         self.scale_factor = scale_factor
         self.mode = mode
 
     def forward(self, x):
-        x = F.interpolate(x, scale_factor=self.scale_factor, mode=self.mode)
+        x = F.interpolate(x, scale_factor=float(self.scale_factor), mode=self.mode)
         return x
 
 
@@ -106,30 +108,39 @@ class YOLOLayer(nn.Module):
         self.bce_loss = nn.BCEWithLogitsLoss()
         self.obj_scale = 1
         self.noobj_scale = 100
-        self.metrics = {}
+        self.metrics = dict({"loss": 0., "cls": 0})
         self.img_dim = img_dim
         self.grid_size = 0  # grid size
+        # init needed for converting to torchscript
+        self.stride = 0.
+        self.grid_x = torch.Tensor()
+        self.grid_y = torch.Tensor()
+        self.scaled_anchors = torch.Tensor()
+        self.anchor_w = torch.Tensor()
+        self.anchor_h = torch.Tensor()
 
-    def compute_grid_offsets(self, grid_size, cuda=True):
+    def compute_grid_offsets(self, grid_size: int):
         self.grid_size = grid_size
         g = self.grid_size
-        FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
+        # FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
         self.stride = self.img_dim / self.grid_size
         # Calculate offsets for each grid
-        self.grid_x = torch.arange(g).repeat(g, 1).view([1, 1, g, g]).type(FloatTensor)
-        self.grid_y = torch.arange(g).repeat(g, 1).t().view([1, 1, g, g]).type(FloatTensor)
-        self.scaled_anchors = FloatTensor([(a_w / self.stride, a_h / self.stride) for a_w, a_h in self.anchors])
+        self.grid_x = torch.arange(g).repeat(g, 1).view([1, 1, g, g])
+        self.grid_y = torch.arange(g).repeat(g, 1).t().view([1, 1, g, g])
+        # self.scaled_anchors = FloatTensor([(a_w / self.stride, a_h / self.stride) for a_w, a_h in self.anchors])
+        self.scaled_anchors = torch.tensor(self.anchors) / self.stride
         self.anchor_w = self.scaled_anchors[:, 0:1].view((1, self.num_anchors, 1, 1))
         self.anchor_h = self.scaled_anchors[:, 1:2].view((1, self.num_anchors, 1, 1))
 
-    def forward(self, x, targets=None, img_dim=None):
+    def forward(self, x, targets: Optional[torch.Tensor] = None, img_dim: Optional[int] = None) -> Tuple[torch.Tensor, float]:
 
         # Tensors for cuda support
-        FloatTensor = torch.cuda.FloatTensor if x.is_cuda else torch.FloatTensor
+        # FloatTensor = torch.cuda.FloatTensor if x.is_cuda else torch.FloatTensor
         # LongTensor = torch.cuda.LongTensor if x.is_cuda else torch.LongTensor
         # ByteTensor = torch.cuda.ByteTensor if x.is_cuda else torch.ByteTensor
 
-        self.img_dim = img_dim
+        if img_dim is not None:
+            self.img_dim = int(img_dim)
         num_samples = x.size(0)
         grid_size = x.size(2)
 
@@ -150,14 +161,14 @@ class YOLOLayer(nn.Module):
 
         # If grid size does not match current we compute new offsets
         if grid_size != self.grid_size:
-            self.compute_grid_offsets(grid_size, cuda=x.is_cuda)
+            self.compute_grid_offsets(grid_size)
 
         # Add offset and scale with anchors
-        pred_boxes = FloatTensor(prediction[..., :4].shape)
-        pred_boxes[..., 0] = x.data + self.grid_x
-        pred_boxes[..., 1] = y.data + self.grid_y
-        pred_boxes[..., 2] = torch.exp(w.data) * self.anchor_w
-        pred_boxes[..., 3] = torch.exp(h.data) * self.anchor_h
+        pred_boxes = torch.empty(prediction[..., :4].shape).to(prediction.device)
+        pred_boxes[..., 0] = x.data + self.grid_x.to(x.device)
+        pred_boxes[..., 1] = y.data + self.grid_y.to(y.device)
+        pred_boxes[..., 2] = torch.exp(w.data) * self.anchor_w.to(w.device)
+        pred_boxes[..., 3] = torch.exp(h.data) * self.anchor_h.to(h.device)
 
         output = torch.cat(
             (
@@ -169,7 +180,7 @@ class YOLOLayer(nn.Module):
         )
 
         if targets is None or not targets.numel():
-            return output, 0
+            return output, 0.
         else:
             iou_scores, class_mask, obj_mask, noobj_mask, tx, ty, tw, th, tcls, tconf = \
                 build_targets(
@@ -346,9 +357,9 @@ def weights_init_normal(m):
         torch.nn.init.constant_(m.bias.data, 0.0)
 
 
-def build_targets(predict_boxes, predict_cls, target, anchors, ignore_thres):
-    BoolTensor = torch.cuda.BoolTensor if predict_boxes.is_cuda else torch.BoolTensor
-    FloatTensor = torch.cuda.FloatTensor if predict_boxes.is_cuda else torch.FloatTensor
+def build_targets(predict_boxes, predict_cls, target, anchors, ignore_thres: float):
+    #BoolTensor = torch.cuda.BoolTensor if predict_boxes.is_cuda else torch.BoolTensor
+    #FloatTensor = torch.cuda.FloatTensor if predict_boxes.is_cuda else torch.FloatTensor
 
     nB = predict_boxes.size(0)
     nA = predict_boxes.size(1)
@@ -356,15 +367,15 @@ def build_targets(predict_boxes, predict_cls, target, anchors, ignore_thres):
     nG = predict_boxes.size(2)
 
     # Output tensors
-    obj_mask = BoolTensor(nB, nA, nG, nG).fill_(0)
-    noobj_mask = BoolTensor(nB, nA, nG, nG).fill_(1)
-    class_mask = FloatTensor(nB, nA, nG, nG).fill_(0)
-    iou_scores = FloatTensor(nB, nA, nG, nG).fill_(0)
-    tx = FloatTensor(nB, nA, nG, nG).fill_(0)
-    ty = FloatTensor(nB, nA, nG, nG).fill_(0)
-    tw = FloatTensor(nB, nA, nG, nG).fill_(0)
-    th = FloatTensor(nB, nA, nG, nG).fill_(0)
-    tcls = FloatTensor(nB, nA, nG, nG, nC).fill_(0)
+    obj_mask = torch.full((nB, nA, nG, nG), fill_value=0)
+    noobj_mask = torch.full((nB, nA, nG, nG), fill_value=1)
+    class_mask = torch.full((nB, nA, nG, nG), fill_value=0.)
+    iou_scores = torch.full((nB, nA, nG, nG), fill_value=0.)
+    tx = torch.full((nB, nA, nG, nG), fill_value=0.)
+    ty = torch.full((nB, nA, nG, nG), fill_value=0.)
+    tw = torch.full((nB, nA, nG, nG), fill_value=0.)
+    th = torch.full((nB, nA, nG, nG), fill_value=0.)
+    tcls = torch.full((nB, nA, nG, nG, nC), fill_value=0.)
 
     # Convert to position relative to box
     target_boxes = target[:, 2:6] * nG
@@ -374,10 +385,11 @@ def build_targets(predict_boxes, predict_cls, target, anchors, ignore_thres):
     ious = torch.stack([bbox_wh_iou(anchor, gwh) for anchor in anchors])
     best_ious, best_n = ious.max(0)
     # Separate target values
-    bb, target_labels = target[:, :2].long().t()
-    gx, gy = gxy.t()
-    gw, gh = gwh.t()
-    gi, gj = gxy.long().t()
+    bb = target[:, 0].long()
+    target_labels = target[:, 1].long()
+    gx, gy = gxy[..., 0], gxy[..., 1]
+    gw, gh = gwh[..., 0], gwh[..., 1]
+    gi, gj = gxy[..., 0].long(), gxy[..., 1].long()
     # Set masks
     obj_mask[bb, best_n, gj, gi] = 1
     noobj_mask[bb, best_n, gj, gi] = 0

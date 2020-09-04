@@ -85,7 +85,7 @@ def parse_model_config(path):
     lines = file.read().split('\n')
     lines = [x for x in lines if x and not x.startswith('#')]
     lines = [x.rstrip().lstrip() for x in lines]  # get rid of fringe whitespaces
-    module_defs = []
+    module_defs = list()
     for line in lines:
         if line.startswith('['):  # This marks the start of a new block
             module_defs.append({})
