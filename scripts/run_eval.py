@@ -29,7 +29,7 @@ def main(data_config, model_def, weights_path, batch_size,
 
     print("Compute mAP...")
 
-    precision, recall, avg_prec, f1, ap_class = evaluate_model(
+    loss, precision, recall, avg_prec, f1, ap_class = evaluate_model(
         model,
         path_data=valid_path,
         iou_thres=iou_thres,

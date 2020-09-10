@@ -84,6 +84,8 @@ def main(image_folder, model_def, weights_path, class_path, output_folder, img_s
         img_detections.extend(detects)
         pbar.update(len(path_imgs))
     pbar.close()
+    del model, dataloader
+    torch.cuda.empty_cache()
 
     # Bounding-box colors
     colors = get_colors(len(classes), "jet")
